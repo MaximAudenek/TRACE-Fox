@@ -13,7 +13,7 @@ exit.
 import logging
 import os
 
-from trace_app.infra import config_store
+from trace_app.infra import config_store, custom_colors
 from trace_app.infra.paths import resource_path
 
 logger = logging.getLogger('TRACE.Theme')
@@ -26,7 +26,8 @@ DEFAULT_THEME = 'light'
 #: Not a theme of its own: light or dark, as the system is set (and kept
 #: in step when it changes -- MainWindow follows colorSchemeChanged).
 SYSTEM = 'system'
-CHOICES = THEMES + (SYSTEM,)
+CUSTOM = 'custom'
+CHOICES = THEMES + (SYSTEM, CUSTOM)
 
 _SECTION = 'UI'
 _KEY = 'theme'
@@ -45,6 +46,8 @@ def read_theme():
 
 def resolve(choice):
     """'light' or 'dark' for a choice ('system': as the system is set)."""
+    if choice == CUSTOM:
+        return custom_colors.read()[0]
     return system_theme() if choice == SYSTEM else (
         choice if choice in THEMES else DEFAULT_THEME)
 
@@ -80,6 +83,9 @@ def stylesheet_for(theme):
     the project root once the application is launched from anywhere else or
     packaged -- so every icon reference is rewritten to an absolute path.
     """
+    colors = None
+    if theme == CUSTOM:
+        theme, colors = custom_colors.read()
     path = resource_path(f'styles/{theme}_theme.qss')
     try:
         with open(path, 'r', encoding='utf-8') as handle:
@@ -88,6 +94,8 @@ def stylesheet_for(theme):
         logger.error("Could not read %s: %s", path, exc)
         return ''
 
+    if colors is not None:
+        text = custom_colors.recolor(text, theme, colors)
     return _resolve_urls(text)
 
 
@@ -109,8 +117,9 @@ def apply_theme(app, theme=None, remember=False):
     stylesheet is handled here -- icon tinting belongs to the UI layer, and
     infra must not import from it.
     """
-    theme = theme if theme in THEMES else read_theme()
-    app.setStyleSheet(stylesheet_for(theme))
+    theme = theme if theme in CHOICES else read_choice()
+    resolved = resolve(theme)
+    app.setStyleSheet(stylesheet_for(theme if theme == CUSTOM else resolved))
     if remember:
         save_theme(theme)
-    return theme
+    return resolved
