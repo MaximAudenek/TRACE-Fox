@@ -2011,17 +2011,21 @@ class MainWindow(VolumeInfoMixin, QMainWindow):
         theme_group = QActionGroup(self)
         theme_group.setExclusive(True)  # Only one theme can be selected at a time
 
-        from trace_app.infra.theme import SYSTEM, read_choice
+        from trace_app.infra.theme import CUSTOM, SYSTEM, read_choice
         saved_choice = read_choice()
         for choice, text in (('light', "Light Mode"), ('dark', "Dark Mode"),
-                             (SYSTEM, "Match System")):
+                             (SYSTEM, "Match System"), (CUSTOM, "Custom Theme")):
             action = QAction(text, self)
             action.setCheckable(True)
             action.setChecked(saved_choice == choice)
             action.triggered.connect(
                 lambda _=False, c=choice: self.apply_stylesheet(c))
+            if choice == CUSTOM:
+                self.custom_theme_action = action
             theme_group.addAction(action)
             view_menu.addAction(action)
+        edit_colors = view_menu.addAction("Edit Custom Theme…")
+        edit_colors.triggered.connect(self.edit_custom_theme)
         # 'Match System' follows the system as it changes, not only at start.
         QApplication.instance().styleHints().colorSchemeChanged.connect(
             self._system_scheme_changed)
@@ -3010,14 +3014,16 @@ class MainWindow(VolumeInfoMixin, QMainWindow):
                     else target)
         return target if self.restart(target, setup) else None
 
+    def edit_custom_theme(self):
+        from trace_app.ui.dialogs.custom_theme import CustomThemeDialog
+        if CustomThemeDialog(self).exec():
+            self.apply_stylesheet('custom')
+            self.custom_theme_action.setChecked(True)
+
     def apply_stylesheet(self, theme='light'):
         # 'system': light or dark as the system is, the choice itself kept.
-        from trace_app.infra.theme import resolve
+        from trace_app.infra.theme import CUSTOM, resolve, stylesheet_for
         choice, theme = theme, resolve(theme)
-        if theme == 'dark':
-            qss_file = resource_path('styles/dark_theme.qss')
-        else:
-            qss_file = resource_path('styles/light_theme.qss')
 
         # Monochrome icons are tinted to the theme's foreground colour, so the
         # registry needs to know which theme is active before anything asks it
@@ -3030,7 +3036,7 @@ class MainWindow(VolumeInfoMixin, QMainWindow):
             self.result_viewer.refresh()      # the tabs' icons
         self._tint_viewer_tabs()
 
-        self._apply_palette(theme)
+        self._apply_palette(theme, choice == CUSTOM)
 
         # BranchTreeWidget resolves its own chevrons from the active theme,
         # so no tree needs to be told about the change here. Handing them out
@@ -3053,8 +3059,7 @@ class MainWindow(VolumeInfoMixin, QMainWindow):
             self.mark_image_verified(path)
 
         try:
-            with open(qss_file, 'r') as f:
-                stylesheet = self._resolve_qss_urls(f.read())
+            stylesheet = stylesheet_for(choice if choice == CUSTOM else theme)
             # Only when it changes: setting the same sheet again still makes
             # Qt unpolish and polish every widget in the application, and
             # in a process that built windows before (the tests) that
@@ -3063,7 +3068,7 @@ class MainWindow(VolumeInfoMixin, QMainWindow):
             if app.styleSheet() != stylesheet:
                 app.setStyleSheet(stylesheet)
         except Exception as e:
-            logger.error(f"Error loading stylesheet {qss_file}: {e}")
+            logger.error(f"Error loading stylesheet {choice}: {e}")
 
         # A tab bar keeps the tab widths it measured under the old theme;
         # the light theme's tabs are wider, and the bars scrolled with room
@@ -3083,7 +3088,7 @@ class MainWindow(VolumeInfoMixin, QMainWindow):
         'light': ('#CCE8FF', '#212529'),
     }
 
-    def _apply_palette(self, theme):
+    def _apply_palette(self, theme, custom=False):
         """Align the palette's selection colours with the stylesheet's.
 
         A stylesheet cannot reach everything. The tree's branch area -- the
@@ -3095,12 +3100,16 @@ class MainWindow(VolumeInfoMixin, QMainWindow):
         """
         highlight, text = self._PALETTE_SELECTION.get(
             theme, self._PALETTE_SELECTION['light'])
+        link = '#6CB4FF' if theme == 'dark' else '#1A73E8'
+        if custom:
+            from trace_app.infra.custom_colors import read
+            _, colors = read()
+            highlight, text, link = colors['selection'], colors['selected_text'], colors['link']
         palette = QApplication.instance().palette()
         palette.setColor(QPalette.Highlight, QColor(highlight))
         palette.setColor(QPalette.HighlightedText, QColor(text))
         # Links in labels (About, help text): Qt's default dark blue was
         # unreadable on the dark theme.
-        link = '#6CB4FF' if theme == 'dark' else '#1A73E8'
         palette.setColor(QPalette.Link, QColor(link))
         palette.setColor(QPalette.LinkVisited, QColor(link))
         QApplication.instance().setPalette(palette)
