@@ -6,6 +6,8 @@
 
 **Toolkit for Retrieval and Analysis of Cyber Evidence**
 
+This fork includes Audenek’s fox icon and an editable colour theme. Open **View → Edit Custom Theme…**, choose a light or dark base, adjust the colours and save. Select **View → Custom Theme** to return to your saved palette. The download and release links below refer to upstream TRACE.
+
 Open disk images read-only, organise them into cases, triage what stands out,<br/>
 search inside the evidence and recover deleted files — on Windows, macOS and Linux.
 
